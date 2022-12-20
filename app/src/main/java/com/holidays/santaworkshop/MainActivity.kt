@@ -4,7 +4,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
-import android.os.Environment.getExternalStoragePublicDirectory
 import android.provider.MediaStore
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -19,11 +18,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.content.FileProvider
+import com.google.firebase.ktx.Firebase
+import com.google.firebase.storage.ktx.storage
 import com.holidays.santaworkshop.ui.theme.SantaWorkshopTheme
 import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
+import com.google.firebase.storage.ktx.component1
+import com.google.firebase.storage.ktx.component2
 
 private const val TAG = "SantaWorkshop"
 
@@ -35,8 +38,7 @@ class MainActivity : ComponentActivity() {
                 Home(
                     takePictureOnClick = {
                         dispatchTakePictureIntent()
-                    }
-
+                    },
                 )
             }
         }
@@ -44,6 +46,9 @@ class MainActivity : ComponentActivity() {
 
 
     lateinit var currentPhotoPath: String
+    val IMAGE_CAPTURE_REQUEST_CODE = 1000
+
+    val storageRef = Firebase.storage.reference
 
     @Throws(IOException::class)
     private fun createImageFile(): File {
@@ -60,13 +65,44 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == IMAGE_CAPTURE_REQUEST_CODE && resultCode == RESULT_OK) {
+            var file = Uri.fromFile(File(currentPhotoPath))
+            val imageRef = storageRef.child("images/${file.lastPathSegment}")
+            val uploadTask = imageRef.putFile(file)
+// Register observers to listen for when the download is done or if it fails
+            uploadTask.addOnFailureListener {
+                // Handle unsuccessful uploads
+                Log.i(TAG, "onFailure")
+            }.addOnSuccessListener { taskSnapshot ->
+                // taskSnapshot.metadata contains file metadata such as size, content-type, etc.
+                Log.i(TAG, "onSuccess")
+                val listRef = storageRef.child("images")
+// You'll need to import com.google.firebase.storage.ktx.component1 and
+// com.google.firebase.storage.ktx.component2
+                listRef.listAll()
+                    .addOnSuccessListener { (items, prefixes) ->
+                        Log.i(TAG, "success list")
+
+                        items.forEach { item ->
+                            // All the items under listRef.
+                            println("item $item")
+                        }
+                    }
+                    .addOnFailureListener {
+                        // Uh-oh, an error occurred!
+                        Log.i(TAG, "failure to list")
+                    }
+
+            }
+        }
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
     private fun dispatchTakePictureIntent() {
         Intent(MediaStore.ACTION_IMAGE_CAPTURE).also { takePictureIntent ->
             // Ensure that there's a camera activity to handle the intent
-            val compName = takePictureIntent.resolveActivity(packageManager)
-
-
-            compName?.also {
+            takePictureIntent.resolveActivity(packageManager).also {
                 // Create the File where the photo should go
                 val photoFile: File? = try {
                     createImageFile()
@@ -83,7 +119,7 @@ class MainActivity : ComponentActivity() {
                         it
                     )
                     takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI)
-                    startActivityForResult(takePictureIntent, 1000)
+                    startActivityForResult(takePictureIntent, IMAGE_CAPTURE_REQUEST_CODE)
                 }
             }
         }
@@ -121,13 +157,11 @@ fun Home(takePictureOnClick: () -> Unit) {
             Surface(modifier = Modifier
                 .fillMaxSize()
                 .padding(it),
-                color = MaterialTheme.colorScheme.background) {
+                color = MaterialTheme.colorScheme.surface) {
+
             }
         })
-
-
 }
-
 
 @Preview(showBackground = true)
 @Composable
